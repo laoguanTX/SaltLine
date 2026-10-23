@@ -10,6 +10,7 @@ const PangoCairo = imports.gi.PangoCairo;
 const Mainloop = imports.mainloop;
 const ByteArray = imports.byteArray;
 const T = require('./timeline');
+const Connection = require('./connection');
 const Theme = require('./theme');
 const GdkPixbuf = imports.gi.GdkPixbuf;
 const Gdk = imports.gi.Gdk;
@@ -28,7 +29,14 @@ class SaltLineApplet extends Applet.Applet {
         this._dominant = null;
         this._coverRequest = 0;
         this._cancellable = new Gio.Cancellable();
-        this._file = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_cache_dir(), 'saltplayer-barlyrics', 'state.json']));
+        let config = null;
+        try {
+            const file = Gio.File.new_for_path(GLib.build_filenamev([metadata.path, 'bridge.json']));
+            const [ok, bytes] = file.load_contents(null);
+            if (ok && bytes.length < 16384) config = JSON.parse(ByteArray.toString(bytes));
+        } catch (_) { /* Older/manual installations use the desktop cache directory. */ }
+        const fallback = GLib.build_filenamev([GLib.get_user_cache_dir(), 'saltplayer-barlyrics', 'state.json']);
+        this._file = Gio.File.new_for_path(Connection.statePath(config, fallback));
         this._area = new St.DrawingArea({reactive: false, y_expand: true});
         this.actor.add_child(this._area);
         this._area.connect('repaint', () => this._paint());
@@ -45,6 +53,7 @@ class SaltLineApplet extends Applet.Applet {
             if (this._state && this._state.playing) this._area.queue_repaint();
             return true;
         });
+        this._saltlineReady = true;
         this._read();
     }
     _resize() {
@@ -73,7 +82,7 @@ class SaltLineApplet extends Applet.Applet {
         const request = ++this._coverRequest;
         this._cover = null; this._dominant = null;
         if (!name) return;
-        const file = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_cache_dir(), 'saltplayer-barlyrics', name]));
+        const file = this._file.get_parent().get_child(name);
         file.read_async(GLib.PRIORITY_DEFAULT, this._cancellable, (source, result) => {
             let stream;
             try { stream = source.read_finish(result); }

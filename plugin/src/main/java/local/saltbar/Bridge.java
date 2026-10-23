@@ -21,10 +21,7 @@ public final class Bridge {
 
     static synchronized void start() {
         if (worker != null) return;
-        String cache = System.getenv("XDG_CACHE_HOME");
-        Path root = cache != null && !cache.isBlank() && Path.of(cache).isAbsolute()
-            ? Path.of(cache) : Path.of(System.getProperty("user.home"), ".cache");
-        state = root.resolve("saltplayer-barlyrics/state.json");
+        state = RuntimePaths.cacheDirectory().resolve("state.json");
         revision++; coverFile = null;
         timeline = List.of(); current = null; title = artist = "";
         position = 0; anchor = System.nanoTime(); playing = false; reportedError = false;

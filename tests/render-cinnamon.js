@@ -3,7 +3,7 @@
     const Cairo = imports.cairo;
     const GLib = imports.gi.GLib;
     const P = imports.gi.GdkPixbuf;
-    const path = GLib.build_filenamev([GLib.get_user_cache_dir(),'saltplayer-barlyrics','cover-'+'0'.repeat(64)+'.png']);
+    const path = a._file.get_parent().get_child('cover-'+'0'.repeat(64)+'.png').get_path();
     const pixbuf = P.Pixbuf.new(P.Colorspace.RGB,true,8,128,128);
     pixbuf.fill(0xe83860ff);
     pixbuf.savev(path,'png',[],[]);

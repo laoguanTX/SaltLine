@@ -26,11 +26,9 @@ final class CinnamonIntegration {
         }
         worker.execute(() -> {
             Path temporary = null;
+            String mode = "detecting";
             try {
-                String cache = System.getenv("XDG_CACHE_HOME");
-                Path directory = cache != null && !cache.isBlank() && Path.of(cache).isAbsolute()
-                    ? Path.of(cache) : Path.of(System.getProperty("user.home"), ".cache");
-                directory = directory.resolve("saltplayer-barlyrics");
+                Path directory = RuntimePaths.cacheDirectory();
                 Files.createDirectories(directory);
                 // /tmp can be private to Steam's container. HOME/cache is shared
                 // with its host launcher, which must read these extracted assets.
@@ -48,29 +46,37 @@ final class CinnamonIntegration {
                         extract("applet/"+name, temporary);
                     }
                 }
-                boolean steamContainer = Files.isDirectory(Path.of("/run/host/usr"))
-                    && Files.isExecutable(Path.of("/usr/bin/steam-runtime-launch-client"));
-                ProcessBuilder builder = new ProcessBuilder(installerCommand(temporary, action, token,
-                    steamContainer, "/usr/bin/steam-runtime-launch-client")).redirectErrorStream(true)
-                    .redirectOutput(temporary.resolve("result.txt").toFile());
-                // A Steam runtime or another launcher may supply its own Python/GLib.
-                // Keep the user's desktop bus and XDG paths, but use system libraries.
-                builder.environment().keySet().removeIf(name -> name.startsWith("PYTHON") || Set.of(
-                    "LD_LIBRARY_PATH", "LD_PRELOAD", "GI_TYPELIB_PATH", "GIO_EXTRA_MODULES", "GIO_MODULE_DIR"
-                ).contains(name));
-                Process process = builder.start();
-                if (!process.waitFor(15, TimeUnit.SECONDS)) {
-                    process.destroyForcibly(); process.waitFor();
-                    throw new IOException("Cinnamon 安装操作超时");
+                DesktopLauncher.Plan plan = DesktopLauncher.detect();
+                mode = plan.mode();
+                Path result = temporary.resolve("result.txt");
+                String output = "";
+                int exit = 1;
+                for (int attempt = 0; attempt < 3; attempt++) {
+                    ProcessBuilder builder = new ProcessBuilder(plan.command(temporary, action, token))
+                        .redirectErrorStream(true).redirectOutput(result.toFile());
+                    DesktopLauncher.sanitize(builder.environment());
+                    Process process = builder.start();
+                    if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                        process.destroyForcibly(); process.waitFor();
+                        throw new IOException("Cinnamon 安装超时，请登录桌面后重新启用模组。");
+                    }
+                    exit = process.exitValue();
+                    output = Files.readString(result);
+                    if (exit == 0 || !(output.contains("desktop-unavailable") || output.contains("installer-busy"))) break;
+                    if (attempt < 2) Thread.sleep(750L*(attempt+1));
                 }
-                String output = Files.readString(temporary.resolve("result.txt"));
-                if (process.exitValue() != 0) throw new IOException(output.strip());
+                saveReport(action, plan.mode(), exit == 0, output);
+                if (exit != 0) throw new IOException(output.strip());
                 System.out.println("SaltLine Cinnamon: " + output.strip());
                 output.lines().filter(line -> line.startsWith("WARNING: "))
                     .forEach(line -> warn(line.substring(9)));
             } catch (Exception error) {
                 System.err.println("SaltLine Cinnamon " + action + ": " + error);
-                warn("SaltLine 面板操作失败：" + error.getMessage());
+                saveReport(action, mode, false, error.toString());
+                String message = error.getMessage();
+                // Installer details remain in the log; display the human-readable first line.
+                if (message != null) message = message.lines().findFirst().orElse(message).replace("SaltLine Cinnamon: ", "");
+                warn("SaltLine：" + message + "\n诊断日志：" + RuntimePaths.cacheDirectory().resolve("integration.log"));
                 if (error instanceof InterruptedException) Thread.currentThread().interrupt();
             } finally {
                 if (temporary != null) try (var paths = Files.walk(temporary)) {
@@ -79,18 +85,17 @@ final class CinnamonIntegration {
             }
         });
     }
-    static List<String> installerCommand(Path directory, String action, String token, boolean steamContainer, String launcher) {
-        List<String> command = new ArrayList<>();
-        if (steamContainer) {
-            command.addAll(List.of(launcher, "--alongside-steam", "--clear-env"));
-            for (String name : List.of("HOME", "LANG", "LC_ALL", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR",
-                "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "DISPLAY", "WAYLAND_DISPLAY"))
-                command.add("--pass-env=" + name);
-            command.add("--");
-        }
-        command.addAll(List.of("/usr/bin/python3", "-I", directory.resolve("installer.py").toString(), action,
-            "--source", directory.toString(), "--token", token));
-        return command;
+    private static void saveReport(String action, String mode, boolean success, String message) {
+        try {
+            Path directory = RuntimePaths.cacheDirectory();
+            Files.createDirectories(directory);
+            if (message.length() > 32768) message = message.substring(message.length()-32768);
+            Path temp = Files.createTempFile(directory, "report-", ".tmp");
+            try {
+                Files.writeString(temp, "SaltLine " + java.time.Instant.now() + "\naction="+action+" mode="+mode+" success="+success+"\n"+message);
+                Files.move(temp, directory.resolve("integration.log"), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } finally { Files.deleteIfExists(temp); }
+        } catch (IOException error) { System.err.println("SaltLine diagnostic report: "+error); }
     }
     private static InputStream resource(String name) throws IOException {
         InputStream input = CinnamonIntegration.class.getResourceAsStream("/saltbar-cinnamon/"+name);

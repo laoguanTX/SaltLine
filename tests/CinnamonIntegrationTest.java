@@ -5,15 +5,6 @@ import java.nio.file.*;
 /** Launches the real embedded installer with isolated XDG dirs and in-memory settings. */
 public final class CinnamonIntegrationTest {
     public static void main(String[] args) throws Exception {
-        Path shared = Path.of(System.getenv("XDG_DATA_HOME"), "shared cache with spaces");
-        var nativeCommand = CinnamonIntegration.installerCommand(shared, "enable", "test-token", false, "/fake/launcher");
-        assert nativeCommand.get(0).equals("/usr/bin/python3");
-        assert nativeCommand.contains("-I");
-        var steamCommand = CinnamonIntegration.installerCommand(shared, "enable", "test-token", true, "/fake/launcher");
-        assert steamCommand.get(0).equals("/fake/launcher");
-        assert steamCommand.contains("--alongside-steam") && steamCommand.contains("--clear-env");
-        assert steamCommand.contains(shared.resolve("installer.py").toString());
-        assert !steamCommand.contains("-c"); // paths and arguments never go through a shell
         CinnamonIntegration integration = new CinnamonIntegration();
         Path state = Path.of(System.getenv("XDG_STATE_HOME"), "saltplayer-barlyrics/cinnamon-install.json");
         Path applet = Path.of(System.getenv("XDG_DATA_HOME"), "cinnamon/applets/saltbar@local");
@@ -21,6 +12,8 @@ public final class CinnamonIntegrationTest {
         await(() -> Files.exists(state) && Files.exists(applet.resolve("theme.js")));
         assert Files.readString(applet.resolve("metadata.json")).contains(args[0]);
         assert Files.readString(state).contains("\"created\": true");
+        Path bridge = applet.resolve("bridge.json");
+        assert Files.readString(bridge).contains(RuntimePaths.cacheDirectory().resolve("state.json").toString());
         integration.disable();
         await(() -> Files.readString(state).contains("\"entries\": []"));
         assert Files.exists(applet.resolve("applet.js"));
@@ -28,6 +21,7 @@ public final class CinnamonIntegrationTest {
         await(() -> Files.readString(state).contains("panel1:left:"));
         integration.remove();
         await(() -> !Files.exists(applet));
+        await(() -> Files.readString(RuntimePaths.cacheDirectory().resolve("integration.log")).contains("action=remove"));
         System.out.println("embedded installer: extraction, install, disable, re-enable and removal passed");
     }
     @FunctionalInterface private interface Check { boolean ready() throws Exception; }

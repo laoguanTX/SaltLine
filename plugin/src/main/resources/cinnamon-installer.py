@@ -9,8 +9,28 @@ from pathlib import Path, PurePosixPath
 import tempfile
 import shutil
 import subprocess
+import sys
+import time
 
 UUID = 'saltbar@local'
+
+
+class InstallError(RuntimeError):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+def panel_id(panels):
+    valid = [p.split(':') for p in panels if len(p.split(':')) == 3
+             and p.split(':')[0].isdigit() and p.split(':')[-1] in ('top', 'bottom')]
+    valid.sort(key=lambda p: p[1] != '0')
+    return 'panel'+valid[0][0] if valid else None
+
+
+def write_setting(settings, method, key, value):
+    if not getattr(settings, method)(key, value):
+        raise InstallError('settings-readonly', '面板设置不可写，请检查系统策略或以当前桌面用户运行播放器。')
 
 
 def atomic_write(path, data):
@@ -39,13 +59,14 @@ def asset_path(name):
 
 
 class Integration:
-    def __init__(self, data_home, state_home, settings, reload_applet):
+    def __init__(self, data_home, state_home, settings, reload_applet, verify_applet=None):
         self.destination = Path(data_home)/'cinnamon/applets'/UUID
         self.record_path = Path(state_home)/'saltplayer-barlyrics/cinnamon-install.json'
         self.settings = settings
         self.reload_applet = reload_applet
+        self.verify_applet = verify_applet
 
-    def enable(self, source, token):
+    def enable(self, source, token, state_file=None):
         source = Path(source)
         manifest = json.loads((source/'assets.json').read_text())
         assets = {}
@@ -56,6 +77,11 @@ class Integration:
             if hashlib.sha256(data).hexdigest() != digest: raise RuntimeError('小程序资源校验失败：'+name)
             assets[name] = data
         if json.loads(assets['metadata.json'])['uuid'] != UUID: raise RuntimeError('小程序 UUID 不匹配')
+        state_file = Path(state_file) if state_file is not None else xdg_path('XDG_CACHE_HOME', '.cache')/'saltplayer-barlyrics/state.json'
+        if not state_file.is_absolute() or state_file.name != 'state.json' or '..' in state_file.parts:
+            raise InstallError('invalid-state-path', '播放器提供的歌词缓存路径无效。')
+        assets['bridge.json'] = json.dumps({'version':1, 'stateFile':str(state_file)}, ensure_ascii=False).encode()
+        manifest['bridge.json'] = hashlib.sha256(assets['bridge.json']).hexdigest()
         record = read_record(self.record_path)
         existed = self.destination.exists()
         if self.destination.is_symlink(): raise RuntimeError('小程序目录是符号链接，请先手动处理。')
@@ -88,12 +114,11 @@ class Integration:
         warning = None
         if not present:
             panels = self.settings.get_strv('panels-enabled')
-            panel = next((p.split(':')[0] for p in panels if p.split(':')[-1] in ('top', 'bottom')), None)
+            panel = panel_id(panels)
             if panel is None:
                 warning = '没有水平面板；小程序已安装，请添加水平面板后重新启用模组。'
             else:
-                panel = 'panel'+panel
-                orders = [int(x.split(':')[2]) for x in entries if x.startswith(panel+':left:')]
+                orders = [int(x.split(':')[2]) for x in entries if x.startswith(panel+':left:') and x.split(':')[2].isdigit()]
                 used = [int(x.split(':')[4]) for x in entries if len(x.split(':')) > 4 and x.split(':')[4].isdigit()]
                 instance = max(self.settings.get_int('next-applet-id'), max(used, default=-1)+1)
                 entry = f'{panel}:left:{max(orders, default=-1)+1}:{UUID}:{instance}'
@@ -101,14 +126,25 @@ class Integration:
                 # Persist intended ownership before enabling it.
                 record['entries'] = owned
                 self._save(record)
-                self.settings.set_int('next-applet-id', instance+1)
-                self.settings.set_strv('enabled-applets', entries+[entry])
+                write_setting(self.settings, 'set_int', 'next-applet-id', instance+1)
+                write_setting(self.settings, 'set_strv', 'enabled-applets', entries+[entry])
         record['entries'] = owned
         self._save(record)
-        if changed and present:
+        if present and (changed or self.verify_applet and not self.verify_applet()):
             try: self.reload_applet()
             except Exception as error: warning = '小程序文件已更新，自动重新加载失败：'+str(error)
-        return {'installed': True, 'changed': changed, 'warning': warning}
+        loaded = None
+        if warning is None and self.verify_applet:
+            deadline = time.monotonic()+5
+            while time.monotonic() < deadline:
+                if self.verify_applet():
+                    loaded = True
+                    break
+                time.sleep(.2)
+            if not loaded:
+                warning = '小程序已安装但 Cinnamon 尚未加载。请在系统设置的小程序中检查“盐词”，或重新登录桌面后启用。'
+                loaded = False
+        return {'installed': True, 'changed': changed, 'loaded':loaded, 'warning': warning}
 
     def disable(self, token, remove=False):
         record = read_record(self.record_path)
@@ -124,7 +160,7 @@ class Integration:
         owned_instances = {entry.split(':')[4] for entry in owned if len(entry.split(':')) > 4}
         remaining = [entry for entry in remaining if not (
             len(entry.split(':')) > 4 and entry.split(':')[3].lstrip('!') == UUID and entry.split(':')[4] in owned_instances)]
-        if remaining != entries: self.settings.set_strv('enabled-applets', remaining)
+        if remaining != entries: write_setting(self.settings, 'set_strv', 'enabled-applets', remaining)
         record['entries'] = []
         self._save(record)
         if remove and record.get('created') and not self.destination.is_symlink():
@@ -157,7 +193,7 @@ class GdbusDesktop:
     def __init__(self, executable=None):
         self.executable = executable or ('/usr/bin/gdbus' if Path('/usr/bin/gdbus').is_file() else shutil.which('gdbus'))
         if not self.executable:
-            raise RuntimeError('未找到 gdbus，无法连接 Cinnamon；请确认已安装 Cinnamon 和 GLib 命令行工具。')
+            raise InstallError('missing-gdbus', '缺少桌面通信工具 gdbus，请安装发行版的 GLib 命令行工具后重试。')
 
     def evaluate(self, script):
         try:
@@ -166,7 +202,7 @@ class GdbusDesktop:
                 json.dumps(script, ensure_ascii=False)], capture_output=True, text=True,
                 timeout=5, env=desktop_environment(), check=True)
         except (OSError, subprocess.SubprocessError) as error:
-            raise RuntimeError('无法连接 Cinnamon 桌面，请在同一用户的 Cinnamon 会话内启用模组。') from error
+            raise InstallError('desktop-unavailable', '无法连接 Cinnamon 桌面，请登录 Cinnamon 后，以同一用户启动播放器。') from error
         output = result.stdout.strip()
         if not output.startswith('(true, ') or not output.endswith(')'):
             raise RuntimeError('Cinnamon 未接受面板操作，请检查桌面会话或使用手动安装方式。')
@@ -208,6 +244,9 @@ class GdbusDesktop:
         self.evaluate('imports.gi.Gio.Settings.sync(); true')
         return True
 
+    def running(self):
+        return self.evaluate('(function(){const a=imports.ui.appletManager; return typeof a.getRunningInstancesForUuid === "function" && a.getRunningInstancesForUuid("saltbar@local").some(x => x._saltlineReady === true);})()') is True
+
     def reload(self):
         self.evaluate('imports.ui.extension.reloadExtension("saltbar@local", imports.ui.extension.Type.APPLET); true')
 
@@ -220,38 +259,72 @@ def desktop_backend(gdbus=None):
             schemas = Gio.SettingsSchemaSource.get_default()
             if schemas and schemas.lookup('org.cinnamon', True):
                 settings = Gio.Settings.new('org.cinnamon')
-                def reload_applet():
-                    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+                # The memory backend is used only by isolated lifecycle tests.
+                if os.environ.get('GSETTINGS_BACKEND') == 'memory':
+                    return settings, lambda: None, Gio.Settings.sync, None, 'gi-memory'
+                bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+                owner = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                    'NameHasOwner', GLib.Variant('(s)', ('org.Cinnamon',)), None, Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
+                if not owner:
+                    raise InstallError('desktop-unavailable', '当前没有运行 Cinnamon 桌面，请登录 Cinnamon 后再启用模组。')
+                def evaluate(script):
                     ok, message = bus.call_sync('org.Cinnamon', '/org/Cinnamon', 'org.Cinnamon', 'Eval',
-                        GLib.Variant('(s)', ('imports.ui.extension.reloadExtension("saltbar@local", imports.ui.extension.Type.APPLET); true',)),
-                        None, Gio.DBusCallFlags.NONE, 5000, None).unpack()
-                    if not ok: raise RuntimeError(message)
-                return settings, reload_applet, Gio.Settings.sync
+                        GLib.Variant('(s)', (script,)), None, Gio.DBusCallFlags.NONE, 5000, None).unpack()
+                    if not ok: raise InstallError('desktop-refused', 'Cinnamon 拒绝执行面板操作，请从系统设置检查小程序。')
+                    return json.loads(message) if message else None
+                desktop = GdbusDesktop.__new__(GdbusDesktop)
+                desktop.evaluate = evaluate
+                return settings, desktop.reload, Gio.Settings.sync, desktop.running, 'gi'
         except (ImportError, ValueError):
             pass
+        except InstallError:
+            raise
+        except Exception:
+            # Some distributions ship gi without working Gio typelibs.
+            pass
     desktop = GdbusDesktop(gdbus)
-    # Check the desktop connection before writing any installation files.
     desktop.get_strv('enabled-applets')
-    return desktop, desktop.reload, lambda: None
+    return desktop, desktop.reload, lambda: None, desktop.running, 'gdbus'
+
+
+def acquire_lock(lock):
+    import fcntl
+    deadline = time.monotonic()+3
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                raise InstallError('installer-busy', '另一个盐词安装任务正在运行，请稍后重新启用模组。')
+            time.sleep(.1)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['enable', 'disable', 'remove'])
+    parser.add_argument('action', choices=['enable', 'disable', 'remove', 'diagnose'])
     parser.add_argument('--source', type=Path)
-    parser.add_argument('--token', required=True)
+    parser.add_argument('--token')
+    parser.add_argument('--state-file', type=Path)
     parser.add_argument('--gdbus', help=argparse.SUPPRESS)
     args = parser.parse_args()
-    import fcntl
-    settings, reload_applet, sync = desktop_backend(args.gdbus)
+    if args.action != 'diagnose' and not args.token: parser.error('--token is required for installation actions')
+    if sys.version_info < (3, 8): raise InstallError('python-too-old', '自动安装需要 Python 3.8 或更新版本。')
+    settings, reload_applet, sync, verify, backend = desktop_backend(args.gdbus)
+    if args.action == 'diagnose':
+        print(json.dumps({'ok':True, 'backend':backend, 'python':sys.version.split()[0],
+            'horizontalPanel':panel_id(settings.get_strv('panels-enabled')), 'loaded':verify() if verify else None,
+            'dataHome':str(xdg_path('XDG_DATA_HOME','.local/share')), 'stateFile':str(args.state_file) if args.state_file else None}, ensure_ascii=False))
+        return
     state = xdg_path('XDG_STATE_HOME', '.local/state')
     lock_dir = state/'saltplayer-barlyrics'
     lock_dir.mkdir(parents=True, exist_ok=True)
     with (lock_dir/'cinnamon-install.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        integration = Integration(xdg_path('XDG_DATA_HOME', '.local/share'), state, settings, reload_applet)
-        result = integration.enable(args.source, args.token) if args.action == 'enable' else integration.disable(args.token, remove=args.action == 'remove')
+        acquire_lock(lock)
+        integration = Integration(xdg_path('XDG_DATA_HOME', '.local/share'), state, settings, reload_applet, verify)
+        result = integration.enable(args.source, args.token, args.state_file) if args.action == 'enable' else integration.disable(args.token, remove=args.action == 'remove')
         sync()
+        result['backend'] = backend
         if result.get('warning'): print('WARNING: '+result['warning'])
         print(json.dumps(result, ensure_ascii=False))
 
@@ -260,5 +333,8 @@ if __name__ == '__main__':
     try: main()
     except Exception as error:
         import sys
+        if isinstance(error, PermissionError):
+            error = InstallError('write-permission', '无法写入当前用户的小程序或缓存目录，请检查目录权限；不要以管理员身份启动播放器。')
         print('SaltLine Cinnamon: '+str(error), file=sys.stderr)
+        print(json.dumps({'ok':False,'error':getattr(error,'code','installation-failed'),'message':str(error)},ensure_ascii=False))
         sys.exit(1)

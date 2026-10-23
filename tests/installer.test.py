@@ -106,6 +106,10 @@ print('(true, '+repr(json.dumps(result,ensure_ascii=False))+')')
             result=subprocess.run(command,env=env,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             return json.loads(result.stdout)
+        report=run('diagnose')
+        self.assertEqual(report['backend'],'gdbus')
+        self.assertFalse(self.integration.destination.exists())
+        self.assertFalse(self.integration.record_path.exists())
         run('enable'); run('enable')
         entries=json.loads(state.read_text())['enabled-applets']
         self.assertEqual(sum(UUID in x for x in entries),1)
@@ -127,6 +131,47 @@ print('(true, '+repr(json.dumps(result,ensure_ascii=False))+')')
             self.assertNotIn('LD_LIBRARY_PATH',env)
             self.assertEqual(env['DBUS_SESSION_BUS_ADDRESS'],'session')
             self.assertEqual(env['XDG_DATA_HOME'],'user-data')
+    def test_cache_route_unicode_and_cleanup(self):
+        state_file=self.root/'播放器 单独缓存'/'state.json'
+        self.integration.enable(self.source,'one',state_file)
+        config=json.loads((self.integration.destination/'bridge.json').read_text())
+        self.assertEqual(config,{'version':1,'stateFile':str(state_file)})
+        self.integration.disable('one',remove=True)
+        self.assertFalse(self.integration.destination.exists())
+    def test_invalid_cache_route_does_not_install(self):
+        with self.assertRaises(module.InstallError):self.integration.enable(self.source,'one','relative/state.json')
+        self.assertFalse(self.integration.destination.exists())
+    def test_primary_monitor_and_malformed_entries(self):
+        self.settings.values['panels-enabled']=['broken','2:1:bottom','3:0:top']
+        self.settings.values['enabled-applets'] += ['panel3:left:invalid:old@local:21','unrelated:bad']
+        self.integration.enable(self.source,'one')
+        self.assertTrue(self.owned()[0].startswith('panel3:left:'))
+        self.assertIn('unrelated:bad',self.settings.values['enabled-applets'])
+    def test_readonly_panel_settings_are_not_reported_as_success(self):
+        original=self.settings.get_strv('enabled-applets')
+        self.settings.set_strv=lambda key,value:False
+        with self.assertRaisesRegex(module.InstallError,'面板设置不可写'):self.integration.enable(self.source,'one')
+        self.assertEqual(self.settings.get_strv('enabled-applets'),original)
+    def test_load_failure_reports_manual_recovery(self):
+        self.integration.verify_applet=lambda:False
+        with patch.object(module.time,'monotonic',side_effect=[0,6]):
+            result=self.integration.enable(self.source,'one')
+        self.assertFalse(result['loaded'])
+        self.assertIn('小程序已安装',result['warning'])
+    def test_old_failed_instance_is_reloaded_on_enable(self):
+        self.integration.enable(self.source,'one')
+        readiness=iter([False,True])
+        self.integration.verify_applet=lambda:next(readiness)
+        result=self.integration.enable(self.source,'two')
+        self.assertTrue(result['loaded'])
+        self.assertEqual(len(self.reloads),1)
+    def test_busy_install_has_bounded_wait(self):
+        import fcntl
+        path=self.root/'lock'
+        with path.open('w') as first,path.open('r') as second:
+            fcntl.flock(first,fcntl.LOCK_EX)
+            with patch.object(module.time,'monotonic',side_effect=[0,4]):
+                with self.assertRaisesRegex(module.InstallError,'另一个盐词'):module.acquire_lock(second)
     def test_manual_install_and_layout_preserved(self):
         self.integration.destination.mkdir(parents=True)
         (self.integration.destination/'metadata.json').write_text(json.dumps({'uuid':UUID}))

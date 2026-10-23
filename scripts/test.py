@@ -22,7 +22,7 @@ if not node:
 if not node:
     raise SystemExit('完整测试需要 Node.js，请先安装并加入 PATH。')
 for script in (ROOT/'cinnamon').rglob('*.js'): subprocess.run([node,'--check',str(script)],check=True)
-for name in ['timeline.test.js', 'theme.test.js']:
+for name in ['timeline.test.js', 'theme.test.js', 'connection.test.js']:
     subprocess.run([node,str(ROOT/'tests'/name)],check=True)
 
 subprocess.run(['python3', str(ROOT/'tests/installer.test.py')], check=True)
@@ -30,3 +30,5 @@ with tempfile.TemporaryDirectory() as temp:
     env = dict(os.environ, XDG_DATA_HOME=temp+'/data', XDG_STATE_HOME=temp+'/state', XDG_CACHE_HOME=temp+'/cache', GSETTINGS_BACKEND='memory',
                PYTHONHOME=temp+'/missing-launcher-python', PYTHONPATH=temp+'/missing-launcher-modules')
     subprocess.run([java,'-ea','-cp',cp,'local.saltbar.CinnamonIntegrationTest',VERSION],env=env,check=True)
+
+subprocess.run([java,'-ea','-cp',cp,'local.saltbar.DesktopLauncherTest'],check=True)

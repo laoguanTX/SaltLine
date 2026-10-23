@@ -9,7 +9,7 @@ python3 scripts/test.py
 
 构建脚本也会查找 PATH 中的 javac 和 `.cache/jdk-*/bin/javac`。完整测试另需 Node.js、系统 Python 的 PyGObject 和 Cinnamon 设置架构。构建与测试从项目根目录运行。
 
-产物为 `dist/saltline-1.2.1.spmod` 和 `dist/saltline-cinnamon-1.2.1.zip`。`.spmod` 按官方格式包含 `classes/META-INF/MANIFEST.MF`、PF4J 扩展索引及插件类；不打包宿主 API、Kotlin 或 PF4J，避免类加载冲突。
+产物为 `dist/saltline-1.3.0.spmod` 和 `dist/saltline-cinnamon-1.3.0.zip`。`.spmod` 按官方格式包含 `classes/META-INF/MANIFEST.MF`、PF4J 扩展索引及插件类；不打包宿主 API、Kotlin 或 PF4J，避免类加载冲突。
 
 ```text
 plugin/src/main/java/local/saltbar/
@@ -28,7 +28,7 @@ scripts/                  编译、测试和小程序安装
 tests/                   Java 与 JavaScript 测试
 ```
 
-已验证：针对真实 dev22 API 编译；时间边界、间奏与回退跳转；JSON 特殊字符、中文和 Emoji；写入与停用清理；JavaScript 时间插值、暂停、补偿和 UTF-8 字节偏移；Cinnamon 实际加载、读取测试快照和绘制。另已验证缩略图裁剪、损坏图片、迟到封面丢弃、透明像素过滤、深浅面板主题色，以及 Cinnamon 异步图片加载和 36/44 像素的双行绘制。此外，15 项安装器回归测试覆盖幂等、升级、自动条目移动、手动布局保留、迟到停用、重新启动后删除、中断恢复、哈希及路径校验。Java 已用包内真实资源完成隔离目录中的安装、停用、重新启用和删除验证；本机真实安装器升级后，Cinnamon 已加载 1.2.0。**SaltPlayer 内真实启停回调仍需导入新版模组后验证**。
+已验证：针对真实 dev22 API 编译；时间边界、间奏与回退跳转；JSON 特殊字符、中文和 Emoji；写入与停用清理；JavaScript 时间插值、暂停、补偿和 UTF-8 字节偏移；Cinnamon 实际加载、读取测试快照和绘制。另已验证缩略图裁剪、损坏图片、迟到封面丢弃、透明像素过滤、深浅面板主题色，以及 Cinnamon 异步图片加载和 36/44 像素的双行绘制。此外，22 项安装器回归测试覆盖幂等、升级、自动条目移动、手动布局保留、迟到停用、重新启动后删除、中断恢复、哈希及路径校验。Java 已用包内真实资源完成隔离目录中的安装、停用、重新启用和删除验证；本机真实安装器升级后，Cinnamon 已加载 1.2.0。**SaltPlayer 内真实启停回调仍需导入新版模组后验证**。
 
 运行中的 Cinnamon 可额外验证图片加载与绘制（使用独立测试对象，不替换正在播放的歌词）：
 
@@ -59,3 +59,9 @@ tests/                   Java 与 JavaScript 测试
 没有 Python GI 或 Cinnamon 本地设置架构时，以 Python 标准库调用 `gdbus`，通过当前 Cinnamon 会话读写面板设置及重新加载。不会安装系统软件、修改 Steam 配置或要求管理员权限。Flatpak 等额外沙箱仍不保证宿主访问。
 
 新增测试以 `python3 -I -S` 确保 GI 不可见，使用隔离的模拟桌面完成完整安装生命周期；也验证环境污染过滤与 Steam 启动参数。已实际通过本机 Steam 宿主启动接口运行安装器。
+
+## 1.3.0 跨用户安装
+
+`RuntimePaths` 统一播放器侧缓存路径；`DesktopLauncher` 负责原生 / Steam 命令选择及环境隔离。宿主启动时不再传递容器的 HOME/XDG/PATH，播放器的 `state.json` 路径通过参数写入小程序 `bridge.json`。`connection.js` 校验配置并兼容旧版手动安装的默认路径，封面也从相同目录加载。
+
+安装器返回 `installed` 与 `loaded` 两种结果，GSettings 内存后端仅供隔离测试，不作为桌面加载证明。`diagnose` 命令只读；生产路径写入限长本地日志。测试包括无 GI、只读设置、加载失败、锁争用、自定义缓存和 Steam PATH 保留。具体平台范围见 [兼容性说明](COMPATIBILITY.md)。
