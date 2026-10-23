@@ -2,6 +2,6 @@
   "uuid": "saltbar@local",
   "name": "盐词 · SaltLine",
   "description": "接收 SaltLine 创意工坊插件的歌词，在 Cinnamon 面板显示卡拉 OK 逐字高亮。",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "max-instances": 1
 }

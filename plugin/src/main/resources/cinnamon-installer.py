@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Manage only SaltLine's applet files and panel entries, for the current user."""
 import argparse
+import ast
 import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
 import tempfile
+import shutil
+import subprocess
 
 UUID = 'saltbar@local'
 
@@ -143,32 +146,112 @@ def xdg_path(name, fallback):
     return Path(value) if value and Path(value).is_absolute() else Path.home()/fallback
 
 
+def desktop_environment():
+    return {key: value for key, value in os.environ.items()
+            if not key.startswith('PYTHON') and key not in {
+                'LD_LIBRARY_PATH', 'LD_PRELOAD', 'GI_TYPELIB_PATH', 'GIO_EXTRA_MODULES', 'GIO_MODULE_DIR'}}
+
+
+class GdbusDesktop:
+    """Use Cinnamon's own settings object; no Python GI or local schemas required."""
+    def __init__(self, executable=None):
+        self.executable = executable or ('/usr/bin/gdbus' if Path('/usr/bin/gdbus').is_file() else shutil.which('gdbus'))
+        if not self.executable:
+            raise RuntimeError('未找到 gdbus，无法连接 Cinnamon；请确认已安装 Cinnamon 和 GLib 命令行工具。')
+
+    def evaluate(self, script):
+        try:
+            result = subprocess.run([self.executable, 'call', '--session', '--dest', 'org.Cinnamon',
+                '--object-path', '/org/Cinnamon', '--method', 'org.Cinnamon.Eval',
+                json.dumps(script, ensure_ascii=False)], capture_output=True, text=True,
+                timeout=5, env=desktop_environment(), check=True)
+        except (OSError, subprocess.SubprocessError) as error:
+            raise RuntimeError('无法连接 Cinnamon 桌面，请在同一用户的 Cinnamon 会话内启用模组。') from error
+        output = result.stdout.strip()
+        if not output.startswith('(true, ') or not output.endswith(')'):
+            raise RuntimeError('Cinnamon 未接受面板操作，请检查桌面会话或使用手动安装方式。')
+        try:
+            encoded = ast.literal_eval(output[len('(true, '):-1].strip())
+            return json.loads(encoded) if encoded else None
+        except (ValueError, SyntaxError, TypeError) as error:
+            raise RuntimeError('Cinnamon 返回了无法解析的面板设置。') from error
+
+    @staticmethod
+    def check_key(key):
+        if key not in {'enabled-applets', 'panels-enabled', 'next-applet-id'}:
+            raise ValueError('Unsupported Cinnamon setting')
+
+    def get_strv(self, key):
+        self.check_key(key)
+        value = self.evaluate('global.settings.get_strv('+json.dumps(key)+')')
+        if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+            raise RuntimeError('Cinnamon 面板配置格式不正确。')
+        return value
+
+    def get_int(self, key):
+        self.check_key(key)
+        value = self.evaluate('global.settings.get_int('+json.dumps(key)+')')
+        if type(value) is not int: raise RuntimeError('Cinnamon 小程序编号格式不正确。')
+        return value
+
+    def set_strv(self, key, value):
+        self.check_key(key)
+        if self.evaluate('global.settings.set_strv('+json.dumps(key)+', '+json.dumps(value, ensure_ascii=False)+')') is not True:
+            raise RuntimeError('Cinnamon 拒绝写入面板配置。')
+        self.evaluate('imports.gi.Gio.Settings.sync(); true')
+        return True
+
+    def set_int(self, key, value):
+        self.check_key(key)
+        if self.evaluate('global.settings.set_int('+json.dumps(key)+', '+json.dumps(value)+')') is not True:
+            raise RuntimeError('Cinnamon 拒绝更新小程序编号。')
+        self.evaluate('imports.gi.Gio.Settings.sync(); true')
+        return True
+
+    def reload(self):
+        self.evaluate('imports.ui.extension.reloadExtension("saltbar@local", imports.ui.extension.Type.APPLET); true')
+
+
+def desktop_backend(gdbus=None):
+    if gdbus is None:
+        try:
+            import gi
+            from gi.repository import Gio, GLib
+            schemas = Gio.SettingsSchemaSource.get_default()
+            if schemas and schemas.lookup('org.cinnamon', True):
+                settings = Gio.Settings.new('org.cinnamon')
+                def reload_applet():
+                    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+                    ok, message = bus.call_sync('org.Cinnamon', '/org/Cinnamon', 'org.Cinnamon', 'Eval',
+                        GLib.Variant('(s)', ('imports.ui.extension.reloadExtension("saltbar@local", imports.ui.extension.Type.APPLET); true',)),
+                        None, Gio.DBusCallFlags.NONE, 5000, None).unpack()
+                    if not ok: raise RuntimeError(message)
+                return settings, reload_applet, Gio.Settings.sync
+        except (ImportError, ValueError):
+            pass
+    desktop = GdbusDesktop(gdbus)
+    # Check the desktop connection before writing any installation files.
+    desktop.get_strv('enabled-applets')
+    return desktop, desktop.reload, lambda: None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['enable', 'disable', 'remove'])
     parser.add_argument('--source', type=Path)
     parser.add_argument('--token', required=True)
+    parser.add_argument('--gdbus', help=argparse.SUPPRESS)
     args = parser.parse_args()
     import fcntl
-    import gi
-    from gi.repository import Gio, GLib
+    settings, reload_applet, sync = desktop_backend(args.gdbus)
     state = xdg_path('XDG_STATE_HOME', '.local/state')
     lock_dir = state/'saltplayer-barlyrics'
     lock_dir.mkdir(parents=True, exist_ok=True)
     with (lock_dir/'cinnamon-install.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        schemas = Gio.SettingsSchemaSource.get_default()
-        if not schemas or not schemas.lookup('org.cinnamon', True): raise RuntimeError('没有安装 Cinnamon 设置架构')
-        settings = Gio.Settings.new('org.cinnamon')
-        def reload_applet():
-            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-            ok, message = bus.call_sync('org.Cinnamon', '/org/Cinnamon', 'org.Cinnamon', 'Eval',
-                GLib.Variant('(s)', ('imports.ui.extension.reloadExtension("saltbar@local", imports.ui.extension.Type.APPLET); true',)),
-                None, Gio.DBusCallFlags.NONE, 5000, None).unpack()
-            if not ok: raise RuntimeError(message)
         integration = Integration(xdg_path('XDG_DATA_HOME', '.local/share'), state, settings, reload_applet)
         result = integration.enable(args.source, args.token) if args.action == 'enable' else integration.disable(args.token, remove=args.action == 'remove')
-        Gio.Settings.sync()
+        sync()
         if result.get('warning'): print('WARNING: '+result['warning'])
         print(json.dumps(result, ensure_ascii=False))
 

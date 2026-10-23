@@ -5,6 +5,15 @@ import java.nio.file.*;
 /** Launches the real embedded installer with isolated XDG dirs and in-memory settings. */
 public final class CinnamonIntegrationTest {
     public static void main(String[] args) throws Exception {
+        Path shared = Path.of(System.getenv("XDG_DATA_HOME"), "shared cache with spaces");
+        var nativeCommand = CinnamonIntegration.installerCommand(shared, "enable", "test-token", false, "/fake/launcher");
+        assert nativeCommand.get(0).equals("/usr/bin/python3");
+        assert nativeCommand.contains("-I");
+        var steamCommand = CinnamonIntegration.installerCommand(shared, "enable", "test-token", true, "/fake/launcher");
+        assert steamCommand.get(0).equals("/fake/launcher");
+        assert steamCommand.contains("--alongside-steam") && steamCommand.contains("--clear-env");
+        assert steamCommand.contains(shared.resolve("installer.py").toString());
+        assert !steamCommand.contains("-c"); // paths and arguments never go through a shell
         CinnamonIntegration integration = new CinnamonIntegration();
         Path state = Path.of(System.getenv("XDG_STATE_HOME"), "saltplayer-barlyrics/cinnamon-install.json");
         Path applet = Path.of(System.getenv("XDG_DATA_HOME"), "cinnamon/applets/saltbar@local");

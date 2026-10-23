@@ -5,6 +5,10 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import os
+import subprocess
+import sys
+from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parent.parent
 spec=importlib.util.spec_from_file_location('installer',ROOT/'plugin/src/main/resources/cinnamon-installer.py')
@@ -72,6 +76,57 @@ class InstallerTest(unittest.TestCase):
         self.integration.enable(self.source,'repair')
         self.assertEqual((self.integration.destination/'applet.js').read_bytes(),b'example')
         self.assertEqual(len(self.owned()),1)
+    def test_full_lifecycle_without_python_gi(self):
+        fake = self.root/'gdbus'
+        state = self.root/'desktop.json'
+        state.write_text(json.dumps(self.settings.values))
+        fake.write_text("""#!/usr/bin/python3 -S
+import json,os,sys
+from pathlib import Path
+path=Path(os.environ['FAKE_GDBUS_STATE'])
+settings=json.loads(path.read_text())
+script=json.loads(sys.argv[-1])
+if script.startswith('global.settings.'):
+    method,arguments=script[len('global.settings.'):].split('(',1)
+    args=json.loads('['+arguments[:-1]+']')
+    if method.startswith('get_'): result=settings[args[0]]
+    else:
+        settings[args[0]]=args[1]
+        path.write_text(json.dumps(settings))
+        result=True
+else: result=True
+print('(true, '+repr(json.dumps(result,ensure_ascii=False))+')')
+""")
+        fake.chmod(0o755)
+        env=dict(os.environ, XDG_DATA_HOME=str(self.root/'data'), XDG_STATE_HOME=str(self.root/'state'),
+                 FAKE_GDBUS_STATE=str(state), PYTHONHOME='/missing-steam-python', PYTHONPATH='/missing-python-modules')
+        def run(action):
+            command=['/usr/bin/python3','-I','-S',str(ROOT/'plugin/src/main/resources/cinnamon-installer.py'),
+                     action,'--source',str(self.source),'--token','no-gi','--gdbus',str(fake)]
+            result=subprocess.run(command,env=env,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            return json.loads(result.stdout)
+        run('enable'); run('enable')
+        entries=json.loads(state.read_text())['enabled-applets']
+        self.assertEqual(sum(UUID in x for x in entries),1)
+        run('disable')
+        self.assertFalse(any(UUID in x for x in json.loads(state.read_text())['enabled-applets']))
+        run('enable'); run('remove')
+        self.assertFalse(self.integration.destination.exists())
+    def test_gdbus_reply_validation_and_error_message(self):
+        desktop=module.GdbusDesktop('/usr/bin/gdbus')
+        for output in ["(false, '{}')", '(true, bad-data)', '(true, 4)']:
+            with patch.object(module.subprocess,'run',return_value=subprocess.CompletedProcess([],0,output,'')):
+                with self.assertRaises(RuntimeError):desktop.get_strv('enabled-applets')
+        with patch.object(module.subprocess,'run',side_effect=subprocess.TimeoutExpired('gdbus',5)):
+            with self.assertRaisesRegex(RuntimeError,'Cinnamon 桌面'):desktop.get_strv('enabled-applets')
+    def test_desktop_environment_preserves_bus_and_removes_launcher_libraries(self):
+        with patch.dict(os.environ,{'PYTHONHOME':'custom','LD_LIBRARY_PATH':'custom','DBUS_SESSION_BUS_ADDRESS':'session','XDG_DATA_HOME':'user-data'}):
+            env=module.desktop_environment()
+            self.assertNotIn('PYTHONHOME',env)
+            self.assertNotIn('LD_LIBRARY_PATH',env)
+            self.assertEqual(env['DBUS_SESSION_BUS_ADDRESS'],'session')
+            self.assertEqual(env['XDG_DATA_HOME'],'user-data')
     def test_manual_install_and_layout_preserved(self):
         self.integration.destination.mkdir(parents=True)
         (self.integration.destination/'metadata.json').write_text(json.dumps({'uuid':UUID}))

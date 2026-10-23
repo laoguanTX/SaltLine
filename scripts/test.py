@@ -27,5 +27,6 @@ for name in ['timeline.test.js', 'theme.test.js']:
 
 subprocess.run(['python3', str(ROOT/'tests/installer.test.py')], check=True)
 with tempfile.TemporaryDirectory() as temp:
-    env = dict(os.environ, XDG_DATA_HOME=temp+'/data', XDG_STATE_HOME=temp+'/state', GSETTINGS_BACKEND='memory')
+    env = dict(os.environ, XDG_DATA_HOME=temp+'/data', XDG_STATE_HOME=temp+'/state', XDG_CACHE_HOME=temp+'/cache', GSETTINGS_BACKEND='memory',
+               PYTHONHOME=temp+'/missing-launcher-python', PYTHONPATH=temp+'/missing-launcher-modules')
     subprocess.run([java,'-ea','-cp',cp,'local.saltbar.CinnamonIntegrationTest',VERSION],env=env,check=True)

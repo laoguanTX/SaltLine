@@ -27,7 +27,14 @@ final class CinnamonIntegration {
         worker.execute(() -> {
             Path temporary = null;
             try {
-                temporary = Files.createTempDirectory("saltbar-cinnamon-");
+                String cache = System.getenv("XDG_CACHE_HOME");
+                Path directory = cache != null && !cache.isBlank() && Path.of(cache).isAbsolute()
+                    ? Path.of(cache) : Path.of(System.getProperty("user.home"), ".cache");
+                directory = directory.resolve("saltplayer-barlyrics");
+                Files.createDirectories(directory);
+                // /tmp can be private to Steam's container. HOME/cache is shared
+                // with its host launcher, which must read these extracted assets.
+                temporary = Files.createTempDirectory(directory, "installer-");
                 extract("installer.py", temporary);
                 if (action.equals("enable")) {
                     extract("assets.json", temporary);
@@ -41,9 +48,17 @@ final class CinnamonIntegration {
                         extract("applet/"+name, temporary);
                     }
                 }
-                Process process = new ProcessBuilder("/usr/bin/python3", temporary.resolve("installer.py").toString(), action,
-                    "--source", temporary.toString(), "--token", token).redirectErrorStream(true)
-                    .redirectOutput(temporary.resolve("result.txt").toFile()).start();
+                boolean steamContainer = Files.isDirectory(Path.of("/run/host/usr"))
+                    && Files.isExecutable(Path.of("/usr/bin/steam-runtime-launch-client"));
+                ProcessBuilder builder = new ProcessBuilder(installerCommand(temporary, action, token,
+                    steamContainer, "/usr/bin/steam-runtime-launch-client")).redirectErrorStream(true)
+                    .redirectOutput(temporary.resolve("result.txt").toFile());
+                // A Steam runtime or another launcher may supply its own Python/GLib.
+                // Keep the user's desktop bus and XDG paths, but use system libraries.
+                builder.environment().keySet().removeIf(name -> name.startsWith("PYTHON") || Set.of(
+                    "LD_LIBRARY_PATH", "LD_PRELOAD", "GI_TYPELIB_PATH", "GIO_EXTRA_MODULES", "GIO_MODULE_DIR"
+                ).contains(name));
+                Process process = builder.start();
                 if (!process.waitFor(15, TimeUnit.SECONDS)) {
                     process.destroyForcibly(); process.waitFor();
                     throw new IOException("Cinnamon 安装操作超时");
@@ -63,6 +78,19 @@ final class CinnamonIntegration {
                 } catch (IOException error) { System.err.println("SaltLine temporary cleanup: "+error); }
             }
         });
+    }
+    static List<String> installerCommand(Path directory, String action, String token, boolean steamContainer, String launcher) {
+        List<String> command = new ArrayList<>();
+        if (steamContainer) {
+            command.addAll(List.of(launcher, "--alongside-steam", "--clear-env"));
+            for (String name : List.of("HOME", "LANG", "LC_ALL", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR",
+                "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "DISPLAY", "WAYLAND_DISPLAY"))
+                command.add("--pass-env=" + name);
+            command.add("--");
+        }
+        command.addAll(List.of("/usr/bin/python3", "-I", directory.resolve("installer.py").toString(), action,
+            "--source", directory.toString(), "--token", token));
+        return command;
     }
     private static InputStream resource(String name) throws IOException {
         InputStream input = CinnamonIntegration.class.getResourceAsStream("/saltbar-cinnamon/"+name);

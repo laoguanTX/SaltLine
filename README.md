@@ -39,6 +39,7 @@ Steam 创意工坊用户订阅后仍需在模组管理中启用一次。当前�
 
 ## 常见问题
 
+- 出现 `No module named gi`：更新至 1.2.2 或更高版本，重新启用模组；旧版在 Steam 容器内可能调用了缺少桌面依赖的 Python。
 - 等待连接：确认模组已启用；查看播放器日志中的 `SaltLine` / `SaltLine Cinnamon` 提示。
 - 无封面或取色：确认已授予读取曲库权限，且歌曲含内嵌专辑图片。
 - 高亮不同步：暂停后继续或拖动进度重建同步，也可调整时间补偿。首次在播放中启用可能需要约两次进度回调。
@@ -48,7 +49,7 @@ Steam 创意工坊用户订阅后仍需在模组管理中启用一次。当前�
 
 ## 开发
 
-需要 JDK 25+、Python 3；完整测试另需 Node.js、系统 Python 的 PyGObject 及 Cinnamon 设置架构。
+需要 JDK 25+、Python 3；完整测试另需 Node.js、系统 Python 的 PyGObject 及 Cinnamon 设置架构；安装器同时包含无 GI 备用通道测试。
 
 ```bash
 python3 scripts/build.py
@@ -65,7 +66,7 @@ python3 scripts/test.py
 
 插件通过当前用户的本机缓存文件传递歌词，不监听网络端口、不下载歌词、不修改歌曲文件。只在当前用户目录安装小程序；遵循 `XDG_DATA_HOME`、`XDG_CACHE_HOME` 和 `XDG_STATE_HOME`。
 
-已通过歌词同步、封面、主题色、12 项安装器回归测试和 Java 嵌入资源安装生命周期测试；Cinnamon 6.6.9 已实际加载和绘制验证。当前版本的 SaltPlayer 内完整启停流程仍需实际导入后验证。
+已通过歌词同步、封面、主题色、15 项安装器回归测试和 Java 嵌入资源安装生命周期测试；Cinnamon 6.6.9 已实际加载和绘制验证。当前版本的 SaltPlayer 内完整启停流程仍需实际导入后验证。
 
 ## 许可与接口
 
