@@ -1,0 +1,69 @@
+{
+  "appearance": {
+    "type": "header",
+    "description": "专辑封面与歌词外观"
+  },
+  "width": {
+    "type": "spinbutton",
+    "default": 420,
+    "min": 100,
+    "max": 1400,
+    "step": 10,
+    "units": "像素",
+    "description": "歌词区域宽度"
+  },
+  "fontSize": {
+    "type": "spinbutton",
+    "default": 16,
+    "min": 10,
+    "max": 40,
+    "step": 1,
+    "units": "像素",
+    "description": "字号"
+  },
+  "fontFamily": {
+    "type": "entry",
+    "default": "Sans",
+    "description": "字体名称"
+  },
+  "highlightColor": {
+    "type": "colorchooser",
+    "default": "#8bd5ca",
+    "description": "已唱歌词颜色"
+  },
+  "textColor": {
+    "type": "colorchooser",
+    "default": "#cdd6f4",
+    "description": "未唱歌词颜色"
+  },
+  "showTranslation": {
+    "type": "switch",
+    "default": true,
+    "description": "第二行显示翻译（自动适应面板高度）"
+  },
+  "hideIdle": {
+    "type": "switch",
+    "default": false,
+    "description": "播放器未连接时收起歌词区域"
+  },
+  "offset": {
+    "type": "spinbutton",
+    "default": 0,
+    "min": -2000,
+    "max": 2000,
+    "step": 10,
+    "units": "毫秒",
+    "description": "歌词时间补偿（正值提前）"
+  },
+  "showCover": {
+    "type": "switch",
+    "default": true,
+    "description": "在最左侧显示圆角专辑封面"
+  },
+  "useCoverColors": {
+    "type": "switch",
+    "default": true,
+    "description": "自动从专辑封面提取歌词主题色",
+    "tooltip": "关闭后使用手动设置的颜色；无封面时回退到手动颜色。"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "uuid": "saltbar@local",
+  "name": "SaltPlayer 任务栏逐字歌词",
+  "description": "接收 SaltBar 创意工坊插件的歌词，在 Cinnamon 面板显示卡拉 OK 逐字高亮。",
+  "version": "1.2.0",
+  "max-instances": 1
+}

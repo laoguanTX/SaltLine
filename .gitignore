@@ -1,0 +1,24 @@
+# Local build tools and dependencies
+.cache/
+
+# Generated binaries, releases and render previews
+build/
+dist/
+
+# Python bytecode and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.log
+
+# Editors and operating system files
+.idea/
+.vscode/
+.DS_Store
+*~

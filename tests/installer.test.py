@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+ROOT=Path(__file__).resolve().parent.parent
+spec=importlib.util.spec_from_file_location('installer',ROOT/'plugin/src/main/resources/cinnamon-installer.py')
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+UUID=module.UUID
+
+class Settings:
+    def __init__(self):
+        self.values={'enabled-applets':['panel1:left:0:menu@cinnamon.org:0'], 'panels-enabled':['1:0:bottom'], 'next-applet-id':1}
+    def get_strv(self,key):return list(self.values[key])
+    def set_strv(self,key,value):self.values[key]=list(value);return True
+    def get_int(self,key):return self.values[key]
+    def set_int(self,key,value):self.values[key]=value;return True
+
+class InstallerTest(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory()
+        self.root=Path(self.temp.name)
+        self.source=self.root/'source'
+        self.source.mkdir()
+        self.settings=Settings()
+        self.reloads=[]
+        self.integration=module.Integration(self.root/'data',self.root/'state',self.settings,lambda:self.reloads.append(True))
+        self.assets({'metadata.json':json.dumps({'uuid':UUID,'version':'1.2.0'}).encode(),'applet.js':b'example'})
+    def tearDown(self):self.temp.cleanup()
+    def assets(self,files):
+        manifest={}
+        for name,data in files.items():
+            path=self.source/'applet'/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+            manifest[name]=hashlib.sha256(data).hexdigest()
+        (self.source/'assets.json').write_text(json.dumps(manifest))
+    def owned(self):return [x for x in self.settings.get_strv('enabled-applets') if UUID in x]
+    def test_install_reenable_disable_remove(self):
+        self.integration.enable(self.source,'one')
+        self.assertEqual(len(self.owned()),1)
+        self.integration.enable(self.source,'one')
+        self.assertEqual(len(self.owned()),1)
+        self.assertEqual(self.reloads,[])
+        self.integration.disable('one')
+        self.assertEqual(self.owned(),[])
+        self.assertTrue(self.integration.destination.exists())
+        self.integration.enable(self.source,'two')
+        self.integration.disable('one') # late stop from old plugin
+        self.assertEqual(len(self.owned()),1)
+        self.integration.disable('two',remove=True)
+        self.assertEqual(self.owned(),[])
+        self.assertFalse(self.integration.destination.exists())
+        self.assertEqual(self.settings.get_strv('enabled-applets'),['panel1:left:0:menu@cinnamon.org:0'])
+    def test_delete_after_restart_of_disabled_plugin(self):
+        self.integration.enable(self.source,'one')
+        self.integration.disable('one')
+        self.integration.disable('new-plugin-instance',remove=True)
+        self.assertFalse(self.integration.destination.exists())
+    def test_delete_after_interrupted_player_exit(self):
+        self.integration.enable(self.source,'old-process')
+        self.integration.disable('new-process',remove=True)
+        self.assertEqual(self.owned(),[])
+        self.assertFalse(self.integration.destination.exists())
+    def test_repair_interrupted_first_install(self):
+        manifest=json.loads((self.source/'assets.json').read_text())
+        self.integration._save({'uuid':UUID,'created':True,'files':manifest,'token':'interrupted','entries':[]})
+        self.integration.destination.mkdir(parents=True)
+        (self.integration.destination/'applet.js').write_text('partial')
+        self.integration.enable(self.source,'repair')
+        self.assertEqual((self.integration.destination/'applet.js').read_bytes(),b'example')
+        self.assertEqual(len(self.owned()),1)
+    def test_manual_install_and_layout_preserved(self):
+        self.integration.destination.mkdir(parents=True)
+        (self.integration.destination/'metadata.json').write_text(json.dumps({'uuid':UUID}))
+        manual='panel1:right:8:'+UUID+':99'
+        self.settings.values['enabled-applets'].append(manual)
+        self.integration.enable(self.source,'one')
+        self.assertEqual(self.owned(),[manual])
+        self.assertEqual(len(self.reloads),1)
+        self.integration.disable('one',remove=True)
+        self.assertEqual(self.owned(),[manual])
+        self.assertTrue((self.integration.destination/'applet.js').exists())
+    def test_moved_automatic_applet_removed_by_instance(self):
+        self.integration.enable(self.source,'one')
+        original=self.owned()[0]
+        moved=original.replace('panel1:left:1:','panel2:right:4:')
+        self.settings.values['enabled-applets'].remove(original)
+        self.settings.values['enabled-applets'].append(moved)
+        self.integration.enable(self.source,'two')
+        self.assertEqual(self.owned(),[moved])
+        self.integration.disable('two')
+        self.assertEqual(self.owned(),[])
+    def test_modified_file_and_settings_preserved(self):
+        self.integration.enable(self.source,'one')
+        modified=self.integration.destination/'applet.js';modified.write_text('custom edit')
+        extra=self.integration.destination/'notes.txt';extra.write_text('user data')
+        self.integration.disable('one',remove=True)
+        self.assertEqual(modified.read_text(),'custom edit')
+        self.assertTrue(extra.exists())
+    def test_no_horizontal_panel_installs_without_changing_layout(self):
+        self.settings.values['panels-enabled']=['1:0:left']
+        result=self.integration.enable(self.source,'one')
+        self.assertIsNotNone(result['warning'])
+        self.assertEqual(self.owned(),[])
+    def test_invalid_assets_no_partial_install(self):
+        (self.source/'applet/applet.js').write_text('tampered')
+        with self.assertRaises(RuntimeError):self.integration.enable(self.source,'one')
+        self.assertFalse(self.integration.destination.exists())
+        self.assertEqual(self.owned(),[])
+    def test_traversal_rejected(self):
+        (self.source/'assets.json').write_text(json.dumps({'../escape':'bad'}))
+        with self.assertRaises(RuntimeError):self.integration.enable(self.source,'one')
+        self.assertFalse(self.integration.destination.exists())
+    def test_symlink_preserved(self):
+        target=self.root/'unrelated';target.mkdir()
+        self.integration.destination.parent.mkdir(parents=True)
+        self.integration.destination.symlink_to(target,target_is_directory=True)
+        with self.assertRaises(RuntimeError):self.integration.enable(self.source,'one')
+        self.assertEqual(list(target.iterdir()),[])
+    def test_version_update_reload_keeps_instance(self):
+        self.integration.enable(self.source,'one');original=self.owned()
+        self.assets({'metadata.json':json.dumps({'uuid':UUID,'version':'1.3.0'}).encode(),'applet.js':b'updated'})
+        result=self.integration.enable(self.source,'two')
+        self.assertTrue(result['changed'])
+        self.assertEqual(self.owned(),original)
+        self.assertEqual(len(self.reloads),1)
+        self.assertEqual((self.integration.destination/'applet.js').read_bytes(),b'updated')
+
+if __name__=='__main__':unittest.main()
