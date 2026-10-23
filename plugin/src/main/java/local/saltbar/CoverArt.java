@@ -18,7 +18,7 @@ final class CoverArt {
     private static ExecutorService worker;
     static synchronized void start() {
         worker = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "SaltBar-cover"); t.setDaemon(true); return t;
+            Thread t = new Thread(r, "SaltLine-cover"); t.setDaemon(true); return t;
         });
     }
     static synchronized void stop() {
@@ -61,7 +61,7 @@ final class CoverArt {
                 }
             } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             catch (Exception e) {
-                if (Bridge.isCurrent(revision)) System.err.println("SaltBar cover: " + e);
+                if (Bridge.isCurrent(revision)) System.err.println("SaltLine cover: " + e);
             }
         });
     }

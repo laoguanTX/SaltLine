@@ -9,7 +9,7 @@ python3 scripts/test.py
 
 构建脚本也会查找 PATH 中的 javac 和 `.cache/jdk-*/bin/javac`。完整测试另需 Node.js、系统 Python 的 PyGObject 和 Cinnamon 设置架构。构建与测试从项目根目录运行。
 
-产物为 `dist/saltbar-1.2.0.spmod` 和 `dist/saltbar-cinnamon-1.2.0.zip`。`.spmod` 按官方格式包含 `classes/META-INF/MANIFEST.MF`、PF4J 扩展索引及插件类；不打包宿主 API、Kotlin 或 PF4J，避免类加载冲突。
+产物为 `dist/saltline-1.2.1.spmod` 和 `dist/saltline-cinnamon-1.2.1.zip`。`.spmod` 按官方格式包含 `classes/META-INF/MANIFEST.MF`、PF4J 扩展索引及插件类；不打包宿主 API、Kotlin 或 PF4J，避免类加载冲突。
 
 ```text
 plugin/src/main/java/local/saltbar/

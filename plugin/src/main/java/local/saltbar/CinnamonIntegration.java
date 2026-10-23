@@ -11,7 +11,7 @@ final class CinnamonIntegration {
     private final String token = UUID.randomUUID().toString();
     private final ThreadPoolExecutor worker = new ThreadPoolExecutor(0, 1, 1, TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(), r -> {
-            Thread thread = new Thread(r, "SaltBar-Cinnamon"); thread.setDaemon(true); return thread;
+            Thread thread = new Thread(r, "SaltLine-Cinnamon"); thread.setDaemon(true); return thread;
         });
 
     void enable() { submit("enable"); }
@@ -21,7 +21,7 @@ final class CinnamonIntegration {
     private void submit(String action) {
         if (worker.isShutdown()) return;
         if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux")) {
-            if (action.equals("enable")) warn("SaltBar 自动面板安装仅支持 Linux Cinnamon 桌面。");
+            if (action.equals("enable")) warn("SaltLine 自动面板安装仅支持 Linux Cinnamon 桌面。");
             return;
         }
         worker.execute(() -> {
@@ -50,17 +50,17 @@ final class CinnamonIntegration {
                 }
                 String output = Files.readString(temporary.resolve("result.txt"));
                 if (process.exitValue() != 0) throw new IOException(output.strip());
-                System.out.println("SaltBar Cinnamon: " + output.strip());
+                System.out.println("SaltLine Cinnamon: " + output.strip());
                 output.lines().filter(line -> line.startsWith("WARNING: "))
                     .forEach(line -> warn(line.substring(9)));
             } catch (Exception error) {
-                System.err.println("SaltBar Cinnamon " + action + ": " + error);
-                warn("SaltBar 面板操作失败：" + error.getMessage());
+                System.err.println("SaltLine Cinnamon " + action + ": " + error);
+                warn("SaltLine 面板操作失败：" + error.getMessage());
                 if (error instanceof InterruptedException) Thread.currentThread().interrupt();
             } finally {
                 if (temporary != null) try (var paths = Files.walk(temporary)) {
                     for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
-                } catch (IOException error) { System.err.println("SaltBar temporary cleanup: "+error); }
+                } catch (IOException error) { System.err.println("SaltLine temporary cleanup: "+error); }
             }
         });
     }
@@ -78,7 +78,7 @@ final class CinnamonIntegration {
         // Host UI calls must originate on the Swing dispatch thread.
         javax.swing.SwingUtilities.invokeLater(() -> {
             try { WorkshopApi.ui().toast(message, WorkshopApi.Ui.ToastType.Warning); }
-            catch (Exception error) { System.err.println("SaltBar notification: "+error); }
+            catch (Exception error) { System.err.println("SaltLine notification: "+error); }
         });
     }
 }

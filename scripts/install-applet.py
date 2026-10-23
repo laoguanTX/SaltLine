@@ -22,7 +22,7 @@ if args.remove:
     settings.set_strv('enabled-applets', [x for x in entries if x.split(':')[3] != UUID])
     Gio.Settings.sync()
     if dest.exists(): shutil.rmtree(dest)
-    print('已移除 SaltBar 面板小程序。播放器插件请在模组管理中删除。')
+    print('已移除 SaltLine 面板小程序。播放器插件请在模组管理中删除。')
 else:
     shutil.copytree(ROOT/'cinnamon'/UUID, dest, dirs_exist_ok=True)
     print(f'已安装：{dest}')

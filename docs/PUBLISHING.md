@@ -5,7 +5,7 @@
 1. 在项目根目录执行 `python3 scripts/test.py`，确认测试通过。
 2. 确认根目录 `VERSION` 和 `cinnamon/saltbar@local/metadata.json` 版本一致。
 3. 执行 `python3 scripts/build.py` 生成最新安装包。
-4. 将 `dist/saltbar-<版本>.spmod` 与可选的 `dist/saltbar-cinnamon-<版本>.zip` 上传至对应版本的 GitHub Release。源码由 GitHub 自动提供下载。
+4. 将 `dist/saltline-<版本>.spmod` 与可选的 `dist/saltline-cinnamon-<版本>.zip` 上传至对应版本的 GitHub Release。源码由 GitHub 自动提供下载。
 
 源码提交不包含 JDK、缓存、编译文件、安装包和本机配置。旧版本安装包仅在本地 `dist/archive/` 留存。
 

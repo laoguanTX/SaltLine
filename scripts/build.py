@@ -64,16 +64,16 @@ def build():
     (meta / 'MANIFEST.MF').write_text(
         'Manifest-Version: 1.0\nPlugin-Class: local.saltbar.MainPlugin\n'
         f'Plugin-Id: local.saltbar\nPlugin-Version: {VERSION}\n'
-        'Plugin-Provider: SaltBar\nPlugin-Name: SaltBar Cinnamon Lyrics\n'
+        'Plugin-Provider: laoguanTX\nPlugin-Name: SaltLine (盐词)\n'
         'Plugin-Description: Word-synced lyrics for the Cinnamon panel\n'
         'Plugin-Has-Config: false\nPlugin-Permissions: library-read\n\n')
     dist = ROOT / 'dist'
     dist.mkdir(exist_ok=True)
-    mod = dist / f'saltbar-{VERSION}.spmod'
+    mod = dist / f'saltline-{VERSION}.spmod'
     with zipfile.ZipFile(mod, 'w', zipfile.ZIP_DEFLATED) as z:
         for path in sorted(classes.rglob('*')):
             if path.is_file(): z.write(path, 'classes/' + path.relative_to(classes).as_posix())
-    with zipfile.ZipFile(dist / f'saltbar-cinnamon-{VERSION}.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+    with zipfile.ZipFile(dist / f'saltline-cinnamon-{VERSION}.zip', 'w', zipfile.ZIP_DEFLATED) as z:
         for path in sorted((ROOT / 'cinnamon').rglob('*')):
             if path.is_file(): z.write(path, path.relative_to(ROOT / 'cinnamon'))
     print(mod)

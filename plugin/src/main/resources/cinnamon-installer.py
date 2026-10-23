@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manage only SaltBar's applet files and panel entries, for the current user."""
+"""Manage only SaltLine's applet files and panel entries, for the current user."""
 import argparse
 import hashlib
 import json
@@ -24,7 +24,7 @@ def atomic_write(path, data):
 def read_record(path):
     if not path.exists(): return {}
     record = json.loads(path.read_text())
-    if record.get('uuid') != UUID: raise RuntimeError('SaltBar 安装记录无效，已保留现有文件。')
+    if record.get('uuid') != UUID: raise RuntimeError('SaltLine 安装记录无效，已保留现有文件。')
     return record
 
 
@@ -177,5 +177,5 @@ if __name__ == '__main__':
     try: main()
     except Exception as error:
         import sys
-        print('SaltBar Cinnamon: '+str(error), file=sys.stderr)
+        print('SaltLine Cinnamon: '+str(error), file=sys.stderr)
         sys.exit(1)

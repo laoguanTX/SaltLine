@@ -30,7 +30,7 @@ public final class Bridge {
         position = 0; anchor = System.nanoTime(); playing = false; reportedError = false;
         playbackStateKnown = false; positionSeen = false;
         worker = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "SaltBar-bridge"); t.setDaemon(true); return t;
+            Thread t = new Thread(r, "SaltLine-bridge"); t.setDaemon(true); return t;
         });
         worker.scheduleWithFixedDelay(Bridge::publish, 0, 100, TimeUnit.MILLISECONDS);
     }
@@ -39,7 +39,7 @@ public final class Bridge {
         worker.shutdownNow(); worker = null;
         // publish holds this same monitor, so no worker can rewrite after deletion.
         try { Files.deleteIfExists(state); Files.deleteIfExists(state.resolveSibling("state.tmp")); }
-        catch (IOException e) { System.err.println("SaltBar: " + e); }
+        catch (IOException e) { System.err.println("SaltLine: " + e); }
         clear();
     }
     static synchronized long revision() { return revision; }
@@ -108,7 +108,7 @@ public final class Bridge {
             Files.move(temp, state, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             reportedError = false;
         } catch (IOException | UnsupportedOperationException e) {
-            if (!reportedError) System.err.println("SaltBar cannot write state: " + e);
+            if (!reportedError) System.err.println("SaltLine cannot write state: " + e);
             reportedError = true;
         }
     }

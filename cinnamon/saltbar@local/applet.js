@@ -14,7 +14,7 @@ const Theme = require('./theme');
 const GdkPixbuf = imports.gi.GdkPixbuf;
 const Gdk = imports.gi.Gdk;
 
-class SaltBarApplet extends Applet.Applet {
+class SaltLineApplet extends Applet.Applet {
     constructor(metadata, orientation, panelHeight, instanceId) {
         super(orientation, panelHeight, instanceId);
         this.setAllowedLayout(Applet.AllowedLayout.HORIZONTAL);
@@ -36,7 +36,7 @@ class SaltBarApplet extends Applet.Applet {
         for (const key of ['width', 'fontSize', 'fontFamily', 'highlightColor', 'textColor', 'showTranslation', 'hideIdle', 'offset', 'showCover', 'useCoverColors'])
             this.settings.bind(key, key, () => this._resize());
         this._resize();
-        this.set_applet_tooltip('SaltBar：等待 SaltPlayer 创意工坊插件\n右键 → 配置，可调整宽度、字号和时间补偿');
+        this.set_applet_tooltip('SaltLine：等待 SaltPlayer 创意工坊插件\n右键 → 配置，可调整宽度、字号和时间补偿');
         this._timer = Mainloop.timeout_add(33, () => {
             if (this._dead) return false;
             const now = GLib.get_monotonic_time() / 1000;
@@ -58,7 +58,7 @@ class SaltBarApplet extends Applet.Applet {
         this._receivedWall = Date.now();
         this._receivedAt = GLib.get_monotonic_time() / 1000;
         this._resize();
-        let tooltip = 'SaltBar：等待 SaltPlayer 创意工坊插件';
+        let tooltip = 'SaltLine：等待 SaltPlayer 创意工坊插件';
         if (state) {
             tooltip = [state.title, state.artist].filter(Boolean).join(' — ') || 'SaltPlayer';
             tooltip += state.playing ? '\n播放中' : '\n已暂停';
@@ -213,7 +213,7 @@ class SaltBarApplet extends Applet.Applet {
             }
             this._lastFrame = {hasCover: !!this._cover, highlight, mainY:y, mainHeight:th, translationY:sub ? y+th+gap : null, translationHeight:sh, height};
             cr.restore();
-        } catch (e) { global.logError('SaltBar repaint: ' + e); }
+        } catch (e) { global.logError('SaltLine repaint: ' + e); }
         finally { cr.$dispose(); }
     }
     on_applet_removed_from_panel() {
@@ -224,5 +224,5 @@ class SaltBarApplet extends Applet.Applet {
     }
 }
 function main(metadata, orientation, panelHeight, instanceId) {
-    return new SaltBarApplet(metadata, orientation, panelHeight, instanceId);
+    return new SaltLineApplet(metadata, orientation, panelHeight, instanceId);
 }

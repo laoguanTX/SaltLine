@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import json, os, pathlib, shutil, subprocess, tempfile
-from build import ROOT, CACHE, build, find_javac
+from build import ROOT, CACHE, build, find_javac, VERSION
 build()
 javac = find_javac()
 java = str(pathlib.Path(javac).with_name('java'))
@@ -28,4 +28,4 @@ for name in ['timeline.test.js', 'theme.test.js']:
 subprocess.run(['python3', str(ROOT/'tests/installer.test.py')], check=True)
 with tempfile.TemporaryDirectory() as temp:
     env = dict(os.environ, XDG_DATA_HOME=temp+'/data', XDG_STATE_HOME=temp+'/state', GSETTINGS_BACKEND='memory')
-    subprocess.run([java,'-ea','-cp',cp,'local.saltbar.CinnamonIntegrationTest'],env=env,check=True)
+    subprocess.run([java,'-ea','-cp',cp,'local.saltbar.CinnamonIntegrationTest',VERSION],env=env,check=True)

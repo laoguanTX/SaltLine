@@ -1,4 +1,4 @@
-# SaltBar · SaltPlayer 任务栏逐字歌词
+# 盐词 · SaltLine
 
 在 Cinnamon 任务栏中显示 SaltPlayer 的逐字歌词，支持圆角专辑封面、封面主题取色和第二行翻译。
 
@@ -14,9 +14,9 @@
 
 要求 **Linux 原生 SaltPlayer 1.19.0+、Cinnamon 水平面板**。不支持 Windows / Wine；受限沙箱中的播放器不保证能操作宿主面板。
 
-1. 从本仓库 [Releases](https://github.com/laoguanTX/SaltPlayer-barlyrics/releases/latest) 下载最新的 `saltbar-<版本>.spmod`。
+1. 从本仓库 [Releases](https://github.com/laoguanTX/SaltLine/releases/latest) 下载最新的 `saltline-<版本>.spmod`。
 2. SaltPlayer → **创意工坊 → 模组管理 → 导入模组**，选择安装包。
-3. 启用 **SaltBar Cinnamon Lyrics**；需要封面时勾选 **读取曲库** 权限。
+3. 启用 **SaltLine (盐词)**；需要封面时勾选 **读取曲库** 权限。
 4. 播放含歌词的歌曲。小程序会自动安装到当前用户目录并添加到首个水平面板。
 
 Steam 创意工坊用户订阅后仍需在模组管理中启用一次。当前仓库未提供已发布的工坊条目链接。
@@ -39,7 +39,7 @@ Steam 创意工坊用户订阅后仍需在模组管理中启用一次。当前�
 
 ## 常见问题
 
-- 等待连接：确认模组已启用；查看播放器日志中的 `SaltBar` / `SaltBar Cinnamon` 提示。
+- 等待连接：确认模组已启用；查看播放器日志中的 `SaltLine` / `SaltLine Cinnamon` 提示。
 - 无封面或取色：确认已授予读取曲库权限，且歌曲含内嵌专辑图片。
 - 高亮不同步：暂停后继续或拖动进度重建同步，也可调整时间补偿。首次在播放中启用可能需要约两次进度回调。
 - 面板未出现：确认正在使用水平面板，且播放器与桌面属于同一 Linux 用户。
@@ -65,7 +65,7 @@ python3 scripts/test.py
 
 插件通过当前用户的本机缓存文件传递歌词，不监听网络端口、不下载歌词、不修改歌曲文件。只在当前用户目录安装小程序；遵循 `XDG_DATA_HOME`、`XDG_CACHE_HOME` 和 `XDG_STATE_HOME`。
 
-已通过歌词同步、封面、主题色、12 项安装器回归测试和 Java 嵌入资源安装生命周期测试；Cinnamon 6.6.9 已实际加载和绘制验证。1.2.0 的 SaltPlayer 内完整启停流程仍需实际导入后验证。
+已通过歌词同步、封面、主题色、12 项安装器回归测试和 Java 嵌入资源安装生命周期测试；Cinnamon 6.6.9 已实际加载和绘制验证。当前版本的 SaltPlayer 内完整启停流程仍需实际导入后验证。
 
 ## 许可与接口
 

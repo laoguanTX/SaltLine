@@ -10,7 +10,7 @@ public final class CinnamonIntegrationTest {
         Path applet = Path.of(System.getenv("XDG_DATA_HOME"), "cinnamon/applets/saltbar@local");
         integration.enable();
         await(() -> Files.exists(state) && Files.exists(applet.resolve("theme.js")));
-        assert Files.readString(applet.resolve("metadata.json")).contains("1.2.0");
+        assert Files.readString(applet.resolve("metadata.json")).contains(args[0]);
         assert Files.readString(state).contains("\"created\": true");
         integration.disable();
         await(() -> Files.readString(state).contains("\"entries\": []"));
